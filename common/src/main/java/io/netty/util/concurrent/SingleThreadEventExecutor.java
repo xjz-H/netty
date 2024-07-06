@@ -74,9 +74,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final AtomicReferenceFieldUpdater<SingleThreadEventExecutor, ThreadProperties> PROPERTIES_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(
                     SingleThreadEventExecutor.class, ThreadProperties.class, "threadProperties");
-
+   // 任务队列
     private final Queue<Runnable> taskQueue;
-
+    //单个线程工作
     private volatile Thread thread;
     @SuppressWarnings("unused")
     private volatile ThreadProperties threadProperties;
@@ -833,8 +833,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void execute(Runnable task, boolean immediate) {
         boolean inEventLoop = inEventLoop();
+        //把当前线程添加到队列中
         addTask(task);
         if (!inEventLoop) {
+            //首次开启线程
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
@@ -948,7 +950,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final long SCHEDULE_PURGE_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
     private void startThread() {
+        //现成未启动
         if (state == ST_NOT_STARTED) {
+            //启动线程逻辑只会启动一遍
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
                 boolean success = false;
                 try {
@@ -982,10 +986,13 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     private void doStartThread() {
+        //Eventloop的 持有的成员变量，断言该thread 必须为null，如果不为null，会抛出AssertionError
         assert thread == null;
+        //executor 是一个执行器，里面只有一个线程，提交方法
         executor.execute(new Runnable() {
             @Override
             public void run() {
+                //当前线程赋值给thread
                 thread = Thread.currentThread();
                 if (interrupted) {
                     thread.interrupt();

@@ -115,7 +115,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     /**
      * The NIO {@link Selector}.
      */
+    //持有选择器，构造方法中创建 原始的seletor
     private Selector selector;
+    //包装的selector
     private Selector unwrappedSelector;
     private SelectedSelectionKeySet selectedKeys;
 
@@ -143,6 +145,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 rejectedExecutionHandler);
         this.provider = ObjectUtil.checkNotNull(selectorProvider, "selectorProvider");
         this.selectStrategy = ObjectUtil.checkNotNull(strategy, "selectStrategy");
+        //创建selector对象 在NioEventLoop 的构造方法中创建selector
         final SelectorTuple selectorTuple = openSelector();
         this.selector = selectorTuple.selector;
         this.unwrappedSelector = selectorTuple.unwrappedSelector;
@@ -170,10 +173,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             this.selector = selector;
         }
     }
-
+   //创建slector对象
     private SelectorTuple openSelector() {
         final Selector unwrappedSelector;
         try {
+            //使用jdk 的nio 创建一个selector对象，给了unwrappedSelector
             unwrappedSelector = provider.openSelector();
         } catch (IOException e) {
             throw new ChannelException("failed to open a new selector", e);
@@ -214,6 +218,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             @Override
             public Object run() {
                 try {
+                    //jdk 的selectedKeys 是使用set来实现的遍历的性能不高，netty把他变成list
                     Field selectedKeysField = selectorImplClass.getDeclaredField("selectedKeys");
                     Field publicSelectedKeysField = selectorImplClass.getDeclaredField("publicSelectedKeys");
 
@@ -242,7 +247,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     if (cause != null) {
                         return cause;
                     }
-
+                   // 这里替换
                     selectedKeysField.set(unwrappedSelector, selectedKeySet);
                     publicSelectedKeysField.set(unwrappedSelector, selectedKeySet);
                     return null;
@@ -499,7 +504,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             logger.info("Migrated " + nChannels + " channel(s) to the new Selector.");
         }
     }
-
+    //死循环不断地找事件来执行。这是是nioEventLoop中真正工作的方法
     @Override
     protected void run() {
         int selectCnt = 0;
@@ -514,7 +519,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
                     case SelectStrategy.BUSY_WAIT:
                         // fall-through to SELECT since the busy-wait is not supported with NIO
-
+                    //没有任务的时候才会走到这个分支
                     case SelectStrategy.SELECT:
                         long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
                         if (curDeadlineNanos == -1L) {
@@ -846,9 +851,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             logger.warn("Unexpected exception while running NioTask.channelUnregistered()", e);
         }
     }
-
+    //及时唤醒 selector.select() 阻塞
     @Override
     protected void wakeup(boolean inEventLoop) {
+        //inEventLoop 为false 代表调用wakeUp的线程和EventLoop中的不是同一个线程
         if (!inEventLoop && nextWakeupNanos.getAndSet(AWAKE) != AWAKE) {
             selector.wakeup();
         }
