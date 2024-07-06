@@ -67,6 +67,7 @@ import static java.lang.Integer.MAX_VALUE;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -433,7 +434,7 @@ public class OpenSslEngineTest extends SSLEngineTest {
         SSLEngine clientEngine = null;
         try {
             clientEngine = clientSslCtx.newEngine(UnpooledByteBufAllocator.DEFAULT);
-            int value = ((ReferenceCountedOpenSslEngine) clientEngine).calculateMaxLengthForWrap(MAX_VALUE, 1);
+            int value = ((ReferenceCountedOpenSslEngine) clientEngine).calculateOutNetBufSize(MAX_VALUE, 1);
             assertTrue(value > 0);
         } finally {
             cleanupClientSslEngine(clientEngine);
@@ -452,7 +453,7 @@ public class OpenSslEngineTest extends SSLEngineTest {
         SSLEngine clientEngine = null;
         try {
             clientEngine = clientSslCtx.newEngine(UnpooledByteBufAllocator.DEFAULT);
-            assertTrue(((ReferenceCountedOpenSslEngine) clientEngine).calculateMaxLengthForWrap(0, 1) > 0);
+            assertTrue(((ReferenceCountedOpenSslEngine) clientEngine).calculateOutNetBufSize(0, 1) > 0);
         } finally {
             cleanupClientSslEngine(clientEngine);
         }
@@ -1567,11 +1568,12 @@ public class OpenSslEngineTest extends SSLEngineTest {
     protected void assertSessionReusedForEngine(SSLEngine clientEngine, SSLEngine serverEngine, boolean reuse) {
         assertEquals(reuse, unwrapEngine(clientEngine).isSessionReused());
         assertEquals(reuse, unwrapEngine(serverEngine).isSessionReused());
+        super.assertSessionReusedForEngine(clientEngine, serverEngine, reuse);
     }
 
     @Override
-    protected boolean isSessionMaybeReused(SSLEngine engine) {
-        return unwrapEngine(engine).isSessionReused();
+    protected SessionReusedState isSessionReused(SSLEngine engine) {
+        return unwrapEngine(engine).isSessionReused() ? SessionReusedState.REUSED : SessionReusedState.NOT_REUSED;
     }
 
     @MethodSource("newTestParams")
@@ -1633,12 +1635,18 @@ public class OpenSslEngineTest extends SSLEngineTest {
         final SSLEngine server = wrapEngine(serverSslCtx.newEngine(UnpooledByteBufAllocator.DEFAULT));
 
         try {
-            assertThrows(SSLHandshakeException.class, new Executable() {
+            SSLException e = assertThrows(SSLException.class, new Executable() {
                 @Override
                 public void execute() throws Throwable {
                     handshake(param.type(), param.delegate(), client, server);
                 }
             });
+            // In the case of TLS_v1_3 we might only generate the exception once the actual handshake is considered
+            // done. If other protocols this should be generasted during the handshake itself and so be of type
+            // SSLHandshakeException.
+            if (!SslProtocols.TLS_v1_3.equals(client.getSession().getProtocol())) {
+                assertInstanceOf(SSLHandshakeException.class, e);
+            }
         } finally {
             cleanupClientSslEngine(client);
             cleanupServerSslEngine(server);
